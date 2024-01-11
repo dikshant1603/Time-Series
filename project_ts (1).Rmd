@@ -1,0 +1,141 @@
+---
+title: "temp2"
+output: html_document
+date: "2023-02-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+data<-read.table("C:/Users/HP/Downloads/DataMaster_v1.csv",header = TRUE,sep=',')
+attach(data)
+train=data[1:1000,]
+test=data[1001:1235,]
+
+plot.ts(train$TATA_close)
+acf(train$TATA_close,lag=50)
+Box.test(train$TATA_close, type="Ljung", lag=50)
+
+plot.ts(diff(train$TATA_close))
+acf(diff(train$TATA_close),lag=50)
+Box.test(diff(train$TATA_close), type="Ljung", lag=20)
+
+```
+
+
+$\bullet$Visually, there exists an autocorrelation issue (the residuals are not white noise). 
+
+$\bullet$
+$H_0:All\ autocorrelations\ are\ 0\ vs\ H_a:at\ least\ one\ autocorrelation\ is\ different\ than\ 0$ 
+
+The formal test indicates that the residuals are autocorrelated. Since the p-value (≈ 0) is less than 𝛼 (0.05), we reject the null hypothesis. The residuals are autocorrelated.
+
+
+```{r}
+newdata=train[-c(1)]
+pairs(newdata,lower.panel = NULL)
+cor(newdata)
+
+mlr<-lm(TATA_close~.,data = newdata)
+summary(mlr)
+
+#Auto-correlation test
+sres<-rstandard(mlr)
+acf(sres, lag=30)
+acf(sres, plot=FALSE)
+Box.test(sres,type = "Ljung", lag=20)
+```
+
+
+```{r}
+#Normality test
+library(nortest)
+shapiro.test(sres)
+hist(sres,breaks=15, col="steelblue")
+
+```
+
+
+$\bullet$
+$H_0:Series\ are\ normally\ distributed\ vs\ H_a:Series\ are\ not\ normally\ distributed$  
+The formal test indicates that residuals are not normally distributed. Since the p-value(≈ 0) is less than 𝛼 (0.05) we reject the null hypothesis. 
+
+```{r}
+#Hetroskedasity test
+#install.packages("skedastic")
+library(skedastic)
+white(mlr,interactions = TRUE)
+
+```
+
+
+$\bullet$ 
+$H_0:There\ is\ no\ Heteroscedasticity(constant\ variance)\ vs\\ H_a:There\ is\ Heteroscedasticity(non-constant\ variance)$ 
+
+The formal test indicates that the residuals exhibit non-constant variance.
+Since the p-value (≈ 0) is less than 𝛼 (0.05), we reject the null hypothesis. The
+residuals are heteroscedastic. 
+
+
+```{r}
+#Deterministic time series model
+#hours=rep(c(1:24),times=412)[1:9886]
+time=seq(1:length(diff(train$TATA_close)))
+fit<-lm(diff(TATA_close)~time,data=train)
+summary(fit)
+sres=rstandard(fit)
+acf(sres)
+Box.test(sres,type = "Ljung", lag=20)
+#Residuals are not white noise
+
+```
+
+
+```{r}
+#Polynomial model
+k=8
+fit1<-lm(diff(TATA_close)~poly(time,k),data=train)
+summary(fit1)
+
+k=1
+fit1<-lm(diff(TATA_close)~poly(time,k),data=train)
+summary(fit1)
+
+sres=rstandard(fit1)
+acf(sres)
+Box.test(sres,type = "Ljung", lag=20)
+
+```
+
+
+```{r}
+library(TSA)
+fit2<-lm(diff(TATA_close)~time,data=train)
+periodogram(fit2$residuals)
+periodogram(fit2$residuals)$spec
+order(periodogram(fit2$residuals)$spec,decreasing = TRUE)
+
+n<-length(diff(train$TATA_close))
+
+acf(diff(TATA_close))
+pacf(diff(TATA_close))
+
+fit4=arima(train$TATA_close,order = c(2,1,2))
+acf(fit4$residuals)
+
+sarima.fit <- arima(train$TATA_close, order = c(1, 1, 1), seasonal=list(order=c(1,1,0), period=4))
+(sarima.fit)
+acf(sarima.fit$residuals)
+
+
+library(fGarch)
+garch.fit<-garchFit(~garch(1,1),data=diff(train$TATA_close), trace=FALSE)
+summary(garch.fit)
+acf(garch.fit@residuals/garch.fit@sigma.t, main="Residuals",lag=50)
+Box.test(garch.fit@residuals/garch.fit@sigma.t, lag=100)
+
+acf((garch.fit@residuals/garch.fit@sigma.t)^2, main="Squared Residuals")
+```
